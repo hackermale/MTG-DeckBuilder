@@ -1,0 +1,35 @@
+{
+  "manifest_version": 3,
+  "name": "MTG Deck Builder Helper",
+  "description": "Build and save Magic: The Gathering decks while browsing card database pages.",
+  "version": "0.1.0",
+  "permissions": [
+    "storage",
+    "activeTab",
+    "scripting"
+  ],
+  "host_permissions": [
+    "https://*.wizards.com/*",
+    "https://gatherer.wizards.com/*"
+  ],
+  "background": {
+    "service_worker": "src/background.js",
+    "type": "module"
+  },
+  "action": {
+    "default_title": "MTG Deck Builder",
+    "default_popup": "src/popup/popup.html"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://*.wizards.com/*",
+        "https://gatherer.wizards.com/*"
+      ],
+      "js": [
+        "src/content/content.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ]
+}

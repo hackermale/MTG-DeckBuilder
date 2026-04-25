@@ -1,0 +1,110 @@
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: Arial, sans-serif;
+  color: #f4f4f5;
+  background: #161616;
+}
+
+.app {
+  width: 380px;
+  min-height: 500px;
+  padding: 12px;
+}
+
+.app-header,
+.deck-controls,
+.actions {
+  display: grid;
+  gap: 8px;
+}
+
+.app-header {
+  margin-bottom: 10px;
+}
+
+h1 {
+  margin: 0;
+  font-size: 18px;
+}
+
+button,
+select,
+input {
+  background: #2a2a2a;
+  color: #f4f4f5;
+  border: 1px solid #3f3f46;
+  border-radius: 6px;
+  padding: 8px;
+}
+
+button {
+  cursor: pointer;
+}
+
+button:hover {
+  background: #323232;
+}
+
+.stats {
+  margin: 10px 0;
+  padding: 10px;
+  border-radius: 6px;
+  background: #202020;
+  font-size: 12px;
+}
+
+.card-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+  max-height: 270px;
+  overflow: auto;
+}
+
+.card-item {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+  align-items: center;
+  background: #202020;
+  border: 1px solid #2f2f2f;
+  border-radius: 6px;
+  padding: 8px;
+}
+
+.card-meta {
+  display: grid;
+  gap: 4px;
+}
+
+.card-name {
+  font-weight: 600;
+}
+
+.card-type {
+  opacity: 0.8;
+  font-size: 12px;
+}
+
+.card-controls {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.count-input {
+  width: 60px;
+}
+
+#status {
+  min-height: 16px;
+  font-size: 12px;
+  opacity: 0.9;
+  margin: 0;
+}

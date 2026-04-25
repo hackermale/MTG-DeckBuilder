@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>MTG Deck Builder</title>
+    <link rel="stylesheet" href="./popup.css" />
+  </head>
+  <body>
+    <main class="app">
+      <header class="app-header">
+        <h1>Deck Builder</h1>
+        <button id="addCurrentCardBtn" type="button">Add Current Card</button>
+      </header>
+
+      <section class="deck-controls">
+        <label for="deckSelect">Active deck</label>
+        <select id="deckSelect"></select>
+        <button id="newDeckBtn" type="button">New Deck</button>
+      </section>
+
+      <section class="stats" id="stats"></section>
+
+      <section>
+        <ul id="cardList" class="card-list"></ul>
+      </section>
+
+      <footer class="actions">
+        <button id="exportBtn" type="button">Copy Decklist</button>
+        <p id="status" role="status" aria-live="polite"></p>
+      </footer>
+    </main>
+    <script type="module" src="./popup.js"></script>
+  </body>
+</html>
