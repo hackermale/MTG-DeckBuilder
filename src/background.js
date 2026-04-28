@@ -106,6 +106,30 @@ async function handleSetActiveDeck(deckId) {
   return state;
 }
 
+async function handleDeleteDeck(deckId) {
+  const state = await getState();
+  const remainingDecks = state.decks.filter((deck) => deck.id !== deckId);
+
+  if (remainingDecks.length === state.decks.length) {
+    return state;
+  }
+
+  if (!remainingDecks.length) {
+    const starterDeck = createDeck();
+    state.decks = [starterDeck];
+    state.activeDeckId = starterDeck.id;
+    await saveState(state);
+    return state;
+  }
+
+  state.decks = remainingDecks;
+  if (state.activeDeckId === deckId) {
+    state.activeDeckId = remainingDecks[0].id;
+  }
+  await saveState(state);
+  return state;
+}
+
 async function handleAddCard(card) {
   const state = await getState();
   const activeDeck = state.decks.find((d) => d.id === state.activeDeckId);
@@ -153,6 +177,8 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
         return handleCreateDeck(message.name);
       case "deck/setActive":
         return handleSetActiveDeck(message.deckId);
+      case "deck/delete":
+        return handleDeleteDeck(message.deckId);
       case "deck/addCard":
         return handleAddCard(message.card);
       case "deck/updateCount":

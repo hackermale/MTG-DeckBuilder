@@ -1,5 +1,6 @@
 const deckSelect = document.getElementById("deckSelect");
 const newDeckBtn = document.getElementById("newDeckBtn");
+const deleteDeckBtn = document.getElementById("deleteDeckBtn");
 const addCurrentCardBtn = document.getElementById("addCurrentCardBtn");
 const exportBtn = document.getElementById("exportBtn");
 const cardList = document.getElementById("cardList");
@@ -40,6 +41,8 @@ function renderDeckSelect() {
     option.selected = deck.id === state.activeDeckId;
     deckSelect.appendChild(option);
   }
+
+  deleteDeckBtn.disabled = state.decks.length <= 1;
 }
 
 function renderStats(deck) {
@@ -143,6 +146,19 @@ async function handleDeckChange() {
   render();
 }
 
+async function handleDeleteDeck() {
+  const deck = activeDeck();
+  if (!deck) return;
+
+  const shouldDelete = window.confirm(`Delete "${deck.name}"?`);
+  if (!shouldDelete) return;
+
+  const updated = await sendMessage({ type: "deck/delete", deckId: deck.id });
+  state = { decks: updated.decks, activeDeckId: updated.activeDeckId };
+  render();
+  setStatus(`Deleted ${deck.name}`);
+}
+
 async function handleExport() {
   const deck = activeDeck();
   const result = await sendMessage({ type: "deck/export", deckId: deck.id });
@@ -166,6 +182,10 @@ deckSelect.addEventListener("change", () => {
 
 newDeckBtn.addEventListener("click", () => {
   handleCreateDeck().catch((error) => setStatus(String(error), true));
+});
+
+deleteDeckBtn.addEventListener("click", () => {
+  handleDeleteDeck().catch((error) => setStatus(String(error), true));
 });
 
 addCurrentCardBtn.addEventListener("click", () => {
