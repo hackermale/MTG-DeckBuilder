@@ -22,6 +22,12 @@ body {
   gap: 8px;
 }
 
+.deck-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
 .app-header {
   margin-bottom: 10px;
 }
