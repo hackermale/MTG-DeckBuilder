@@ -6,6 +6,12 @@ const exportBtn = document.getElementById("exportBtn");
 const cardList = document.getElementById("cardList");
 const stats = document.getElementById("stats");
 const statusEl = document.getElementById("status");
+const createDeckDialog = document.getElementById("createDeckDialog");
+const createDeckForm = document.getElementById("createDeckForm");
+const deckNameInput = document.getElementById("deckNameInput");
+const deckFormatSelect = document.getElementById("deckFormatSelect");
+const cancelCreateDeckBtn = document.getElementById("cancelCreateDeckBtn");
+const ALLOWED_FORMATS = ["standard", "commander", "modern", "pioneer", "historic", "alchemy"];
 
 let state = { decks: [], activeDeckId: "" };
 
@@ -47,7 +53,8 @@ function renderDeckSelect() {
 
 function renderStats(deck) {
   const summary = computeStats(deck);
-  stats.textContent = `${summary.totalCards} total cards | ${summary.uniqueCards} unique cards`;
+  const format = String(deck.format || "standard");
+  stats.textContent = `${summary.totalCards} total cards | ${summary.uniqueCards} unique cards | ${format}`;
 }
 
 function makeCardItem(deck, card) {
@@ -132,11 +139,49 @@ async function addCurrentTabCard() {
 }
 
 async function handleCreateDeck() {
-  const name = window.prompt("Deck name?");
-  if (!name) return;
-  const updated = await sendMessage({ type: "deck/create", name });
+  const name = String(deckNameInput.value || "").trim();
+  if (!name) {
+    throw new Error("Deck name is required.");
+  }
+  const format = String(deckFormatSelect.value || "").trim().toLowerCase();
+
+  const updated = await sendMessage({ type: "deck/create", name, format });
   state = { decks: updated.decks, activeDeckId: updated.activeDeckId };
   render();
+  setStatus(`Created ${name}`);
+}
+
+function openCreateDeckDialog() {
+  deckNameInput.value = `Deck ${state.decks.length + 1}`;
+  deckFormatSelect.value = "standard";
+  createDeckDialog.showModal();
+  deckNameInput.focus();
+  deckNameInput.select();
+}
+
+function closeCreateDeckDialog() {
+  createDeckDialog.close();
+}
+
+function initializeCreateDeckDialog() {
+  deckFormatSelect.innerHTML = "";
+  for (const format of ALLOWED_FORMATS) {
+    const option = document.createElement("option");
+    option.value = format;
+    option.textContent = format;
+    deckFormatSelect.appendChild(option);
+  }
+
+  createDeckForm.addEventListener("submit", (event) => {
+    event.preventDefault();
+    handleCreateDeck()
+      .then(() => closeCreateDeckDialog())
+      .catch((error) => setStatus(String(error), true));
+  });
+
+  cancelCreateDeckBtn.addEventListener("click", () => {
+    closeCreateDeckDialog();
+  });
 }
 
 async function handleDeckChange() {
@@ -181,7 +226,7 @@ deckSelect.addEventListener("change", () => {
 });
 
 newDeckBtn.addEventListener("click", () => {
-  handleCreateDeck().catch((error) => setStatus(String(error), true));
+  openCreateDeckDialog();
 });
 
 deleteDeckBtn.addEventListener("click", () => {
@@ -199,3 +244,4 @@ exportBtn.addEventListener("click", () => {
 });
 
 initialize();
+initializeCreateDeckDialog();

@@ -1,10 +1,17 @@
 const STORAGE_KEY = "mtgDecks";
 const ACTIVE_DECK_KEY = "activeDeckId";
+const ALLOWED_FORMATS = ["standard", "commander", "modern", "pioneer", "historic", "alchemy"];
 
-function createDeck(name = "My Deck") {
+function normalizeDeckFormat(format) {
+  const normalized = String(format || "standard").trim().toLowerCase();
+  return ALLOWED_FORMATS.includes(normalized) ? normalized : "standard";
+}
+
+function createDeck(name = "My Deck", format = "standard") {
   return {
     id: crypto.randomUUID(),
     name,
+    format: normalizeDeckFormat(format),
     cards: [],
     updatedAt: Date.now()
   };
@@ -12,22 +19,32 @@ function createDeck(name = "My Deck") {
 
 async function getState() {
   const data = await chrome.storage.local.get([STORAGE_KEY, ACTIVE_DECK_KEY]);
-  let decks = Array.isArray(data[STORAGE_KEY]) ? data[STORAGE_KEY] : [];
+  let decks = Array.isArray(data[STORAGE_KEY])
+    ? data[STORAGE_KEY].map((deck) => ({
+        ...deck,
+        format: normalizeDeckFormat(deck.format)
+      }))
+    : [];
   let activeDeckId = data[ACTIVE_DECK_KEY];
+  let shouldPersist = false;
 
   if (!decks.length) {
     const starterDeck = createDeck();
     decks = [starterDeck];
     activeDeckId = starterDeck.id;
-    await chrome.storage.local.set({
-      [STORAGE_KEY]: decks,
-      [ACTIVE_DECK_KEY]: activeDeckId
-    });
+    shouldPersist = true;
   }
 
   if (!activeDeckId || !decks.some((deck) => deck.id === activeDeckId)) {
     activeDeckId = decks[0].id;
-    await chrome.storage.local.set({ [ACTIVE_DECK_KEY]: activeDeckId });
+    shouldPersist = true;
+  }
+
+  if (shouldPersist) {
+    await chrome.storage.local.set({
+      [STORAGE_KEY]: decks,
+      [ACTIVE_DECK_KEY]: activeDeckId
+    });
   }
 
   return { decks, activeDeckId };
@@ -88,9 +105,9 @@ async function handleGetState() {
   return getState();
 }
 
-async function handleCreateDeck(name) {
+async function handleCreateDeck(name, format) {
   const state = await getState();
-  const deck = createDeck(name || `Deck ${state.decks.length + 1}`);
+  const deck = createDeck(name || `Deck ${state.decks.length + 1}`, format);
   state.decks.unshift(deck);
   state.activeDeckId = deck.id;
   await saveState(state);
@@ -174,7 +191,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       case "deck/getState":
         return handleGetState();
       case "deck/create":
-        return handleCreateDeck(message.name);
+        return handleCreateDeck(message.name, message.format);
       case "deck/setActive":
         return handleSetActiveDeck(message.deckId);
       case "deck/delete":
