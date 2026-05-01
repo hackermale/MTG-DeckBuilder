@@ -10,7 +10,8 @@
   ],
   "host_permissions": [
     "https://*.wizards.com/*",
-    "https://gatherer.wizards.com/*"
+    "https://gatherer.wizards.com/*",
+    "https://api.scryfall.com/*"
   ],
   "background": {
     "service_worker": "src/background.js",
