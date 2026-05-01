@@ -69,8 +69,30 @@ function normalizeCard(card) {
 }
 
 function isBasicLand(card) {
-  const lower = (card.typeLine || "").toLowerCase();
-  return lower.includes("basic") && lower.includes("land");
+  const lowerTypeLine = (card.typeLine || "").toLowerCase();
+  if (lowerTypeLine.includes("basic") && lowerTypeLine.includes("land")) {
+    return true;
+  }
+
+  const normalizedName = String(card.name || "")
+    .trim()
+    .toLowerCase();
+  const basicLandNames = new Set([
+    "plains",
+    "island",
+    "swamp",
+    "mountain",
+    "forest",
+    "wastes",
+    "snow-covered plains",
+    "snow-covered island",
+    "snow-covered swamp",
+    "snow-covered mountain",
+    "snow-covered forest",
+    "snow-covered wastes"
+  ]);
+
+  return basicLandNames.has(normalizedName);
 }
 
 function addCardToDeck(deck, card) {
