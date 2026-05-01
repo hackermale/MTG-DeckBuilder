@@ -1,6 +1,8 @@
 const STORAGE_KEY = "mtgDecks";
 const ACTIVE_DECK_KEY = "activeDeckId";
 const ALLOWED_FORMATS = ["standard", "commander", "modern", "pioneer", "historic", "alchemy"];
+const SCRYFALL_API_BASE = "https://api.scryfall.com";
+const legalityCache = new Map();
 
 function normalizeDeckFormat(format) {
   const normalized = String(format || "standard").trim().toLowerCase();
@@ -66,6 +68,69 @@ function normalizeCard(card) {
     set: String(card.set || ""),
     count: Number(card.count || 1)
   };
+}
+
+function normalizeLegalityStatus(status) {
+  return String(status || "").trim().toLowerCase();
+}
+
+function isLegalStatus(status) {
+  const normalized = normalizeLegalityStatus(status);
+  return normalized === "legal";
+}
+
+function legalityCacheKey(card) {
+  return `${String(card.name || "").trim().toLowerCase()}|${String(card.set || "").trim().toLowerCase()}`;
+}
+
+async function fetchCardLegalities(card) {
+  const name = String(card.name || "").trim();
+  if (!name) return null;
+
+  const set = String(card.set || "").trim().toLowerCase();
+  const exactPath = `${SCRYFALL_API_BASE}/cards/named?exact=${encodeURIComponent(name)}`;
+  const withSetPath = set ? `${exactPath}&set=${encodeURIComponent(set)}` : exactPath;
+  const urls = set ? [withSetPath, exactPath] : [exactPath];
+
+  for (const url of urls) {
+    try {
+      const response = await fetch(url);
+      if (!response.ok) continue;
+      const data = await response.json();
+      if (data?.object === "card" && data.legalities) {
+        return data.legalities;
+      }
+    } catch (_error) {
+      continue;
+    }
+  }
+
+  return null;
+}
+
+async function getCardLegalities(card) {
+  const key = legalityCacheKey(card);
+  if (legalityCache.has(key)) {
+    return legalityCache.get(key);
+  }
+
+  const legalities = await fetchCardLegalities(card);
+  legalityCache.set(key, legalities);
+  return legalities;
+}
+
+async function ensureCardLegalInFormat(card, format) {
+  const normalizedFormat = normalizeDeckFormat(format);
+  const legalities = await getCardLegalities(card);
+
+  if (!legalities) {
+    throw new Error(`Could not verify legality for ${card.name} in ${normalizedFormat}.`);
+  }
+
+  const status = legalities[normalizedFormat];
+  if (!isLegalStatus(status)) {
+    throw new Error(`${card.name} is not legal in ${normalizedFormat}.`);
+  }
 }
 
 function isBasicLand(card) {
@@ -173,7 +238,9 @@ async function handleAddCard(card) {
   const state = await getState();
   const activeDeck = state.decks.find((d) => d.id === state.activeDeckId);
   if (activeDeck) {
-    addCardToDeck(activeDeck, card);
+    const normalizedCard = normalizeCard(card);
+    await ensureCardLegalInFormat(normalizedCard, activeDeck.format);
+    addCardToDeck(activeDeck, normalizedCard);
     await saveState(state);
   }
   return state;
