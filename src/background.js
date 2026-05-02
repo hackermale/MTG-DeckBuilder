@@ -2,7 +2,8 @@ const STORAGE_KEY = "mtgDecks";
 const ACTIVE_DECK_KEY = "activeDeckId";
 const ALLOWED_FORMATS = ["standard", "commander", "modern", "pioneer", "historic", "alchemy"];
 const SCRYFALL_API_BASE = "https://api.scryfall.com";
-const legalityCache = new Map();
+const COMMANDER_DECK_SIZE = 100;
+const scryfallCardCache = new Map();
 
 function normalizeDeckFormat(format) {
   const normalized = String(format || "standard").trim().toLowerCase();
@@ -10,22 +11,35 @@ function normalizeDeckFormat(format) {
 }
 
 function createDeck(name = "My Deck", format = "standard") {
-  return {
+  const normalizedFormat = normalizeDeckFormat(format);
+  const deck = {
     id: crypto.randomUUID(),
     name,
-    format: normalizeDeckFormat(format),
+    format: normalizedFormat,
     cards: [],
     updatedAt: Date.now()
   };
+  if (normalizedFormat === "commander") {
+    deck.commanderCardId = null;
+    deck.commanderColorIdentity = null;
+  }
+  return deck;
 }
 
 async function getState() {
   const data = await chrome.storage.local.get([STORAGE_KEY, ACTIVE_DECK_KEY]);
   let decks = Array.isArray(data[STORAGE_KEY])
-    ? data[STORAGE_KEY].map((deck) => ({
-        ...deck,
-        format: normalizeDeckFormat(deck.format)
-      }))
+    ? data[STORAGE_KEY].map((deck) => {
+        const format = normalizeDeckFormat(deck.format);
+        const next = { ...deck, format };
+        if (format === "commander") {
+          next.commanderCardId = deck.commanderCardId ?? null;
+          next.commanderColorIdentity = Array.isArray(deck.commanderColorIdentity)
+            ? deck.commanderColorIdentity
+            : null;
+        }
+        return next;
+      })
     : [];
   let activeDeckId = data[ACTIVE_DECK_KEY];
   let shouldPersist = false;
@@ -83,7 +97,7 @@ function legalityCacheKey(card) {
   return `${String(card.name || "").trim().toLowerCase()}|${String(card.set || "").trim().toLowerCase()}`;
 }
 
-async function fetchCardLegalities(card) {
+async function fetchScryfallCard(card) {
   const name = String(card.name || "").trim();
   if (!name) return null;
 
@@ -97,8 +111,8 @@ async function fetchCardLegalities(card) {
       const response = await fetch(url);
       if (!response.ok) continue;
       const data = await response.json();
-      if (data?.object === "card" && data.legalities) {
-        return data.legalities;
+      if (data?.object === "card") {
+        return data;
       }
     } catch (_error) {
       continue;
@@ -108,15 +122,20 @@ async function fetchCardLegalities(card) {
   return null;
 }
 
-async function getCardLegalities(card) {
+async function getScryfallCard(card) {
   const key = legalityCacheKey(card);
-  if (legalityCache.has(key)) {
-    return legalityCache.get(key);
+  if (scryfallCardCache.has(key)) {
+    return scryfallCardCache.get(key);
   }
 
-  const legalities = await fetchCardLegalities(card);
-  legalityCache.set(key, legalities);
-  return legalities;
+  const data = await fetchScryfallCard(card);
+  scryfallCardCache.set(key, data);
+  return data;
+}
+
+async function getCardLegalities(card) {
+  const data = await getScryfallCard(card);
+  return data?.legalities || null;
 }
 
 async function ensureCardLegalInFormat(card, format) {
@@ -130,6 +149,85 @@ async function ensureCardLegalInFormat(card, format) {
   const status = legalities[normalizedFormat];
   if (!isLegalStatus(status)) {
     throw new Error(`${card.name} is not legal in ${normalizedFormat}.`);
+  }
+}
+
+function isValidCommanderCandidate(typeLine) {
+  const t = String(typeLine || "").toLowerCase();
+  if (!t.includes("legendary")) return false;
+  return t.includes("creature") || t.includes("planeswalker");
+}
+
+function isColorIdentitySubset(cardIdentity, commanderIdentity) {
+  const allowed = new Set(commanderIdentity || []);
+  for (const color of cardIdentity || []) {
+    if (!allowed.has(color)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function deckCardTotal(deck) {
+  return deck.cards.reduce((sum, c) => sum + Number(c.count || 0), 0);
+}
+
+function maxCopiesForDeck(deck) {
+  return normalizeDeckFormat(deck.format) === "commander" ? 1 : 4;
+}
+
+async function reconcileCommanderState(deck) {
+  if (normalizeDeckFormat(deck.format) !== "commander") return;
+
+  if (deck.commanderCardId) {
+    const stillThere = deck.cards.some((c) => c.id === deck.commanderCardId);
+    if (stillThere) {
+      return;
+    }
+    deck.commanderCardId = null;
+    deck.commanderColorIdentity = null;
+  }
+
+  if (!deck.cards.length) return;
+
+  for (const c of deck.cards) {
+    const sf = await getScryfallCard(c);
+    const line = sf?.type_line || c.typeLine;
+    if (sf && isValidCommanderCandidate(line)) {
+      deck.commanderCardId = c.id;
+      deck.commanderColorIdentity = sf.color_identity || [];
+      deck.updatedAt = Date.now();
+      return;
+    }
+  }
+}
+
+async function validateCommanderCardAdd(deck, normalizedCard, scryfallCard) {
+  await reconcileCommanderState(deck);
+
+  const typeLine = scryfallCard?.type_line || normalizedCard.typeLine;
+  const cardIdentity = scryfallCard?.color_identity || [];
+
+  if (!deck.commanderCardId) {
+    if (deck.cards.length > 0) {
+      throw new Error(
+        "This Commander deck needs a legendary creature or planeswalker as commander. Remove cards until the first add can be your commander, or start a new Commander deck."
+      );
+    }
+    if (!isValidCommanderCandidate(typeLine)) {
+      throw new Error(
+        "Choose a legendary creature or planeswalker as your commander before adding other cards."
+      );
+    }
+    return;
+  }
+
+  if (deckCardTotal(deck) >= COMMANDER_DECK_SIZE) {
+    throw new Error(`Commander decks are limited to ${COMMANDER_DECK_SIZE} cards.`);
+  }
+
+  if (!isColorIdentitySubset(cardIdentity, deck.commanderColorIdentity)) {
+    throw new Error(`${normalizedCard.name} is outside your commander's color identity.`);
   }
 }
 
@@ -163,7 +261,8 @@ function isBasicLand(card) {
 function addCardToDeck(deck, card) {
   const normalized = normalizeCard(card);
   const existing = deck.cards.find((c) => c.id === normalized.id);
-  const maxCount = isBasicLand(normalized) ? Number.POSITIVE_INFINITY : 4;
+  const maxNonBasic = maxCopiesForDeck(deck);
+  const maxCount = isBasicLand(normalized) ? Number.POSITIVE_INFINITY : maxNonBasic;
 
   if (!existing) {
     deck.cards.push({ ...normalized, count: 1 });
@@ -179,11 +278,16 @@ function updateCardCount(deck, cardId, nextCount) {
 
   if (nextCount <= 0) {
     deck.cards = deck.cards.filter((c) => c.id !== cardId);
+    if (normalizeDeckFormat(deck.format) === "commander" && deck.commanderCardId === cardId) {
+      deck.commanderCardId = null;
+      deck.commanderColorIdentity = null;
+    }
     deck.updatedAt = Date.now();
     return;
   }
 
-  const maxCount = isBasicLand(target) ? Number.POSITIVE_INFINITY : 4;
+  const maxNonBasic = maxCopiesForDeck(deck);
+  const maxCount = isBasicLand(target) ? Number.POSITIVE_INFINITY : maxNonBasic;
   target.count = Math.min(Math.max(1, nextCount), maxCount);
   deck.updatedAt = Date.now();
 }
@@ -239,8 +343,26 @@ async function handleAddCard(card) {
   const activeDeck = state.decks.find((d) => d.id === state.activeDeckId);
   if (activeDeck) {
     const normalizedCard = normalizeCard(card);
+    const scryfallCard = await getScryfallCard(normalizedCard);
+    if (!scryfallCard?.legalities) {
+      throw new Error(`Could not verify card data for ${normalizedCard.name}.`);
+    }
     await ensureCardLegalInFormat(normalizedCard, activeDeck.format);
+
+    if (normalizeDeckFormat(activeDeck.format) === "commander") {
+      await validateCommanderCardAdd(activeDeck, normalizedCard, scryfallCard);
+    }
+
     addCardToDeck(activeDeck, normalizedCard);
+
+    if (normalizeDeckFormat(activeDeck.format) === "commander" && !activeDeck.commanderCardId) {
+      const line = scryfallCard.type_line || normalizedCard.typeLine;
+      if (isValidCommanderCandidate(line)) {
+        activeDeck.commanderCardId = normalizedCard.id;
+        activeDeck.commanderColorIdentity = scryfallCard.color_identity || [];
+      }
+    }
+
     await saveState(state);
   }
   return state;
@@ -250,7 +372,31 @@ async function handleUpdateCount(cardId, count) {
   const state = await getState();
   const activeDeck = state.decks.find((d) => d.id === state.activeDeckId);
   if (activeDeck) {
-    updateCardCount(activeDeck, cardId, Number(count));
+    const nextCount = Number(count);
+    if (normalizeDeckFormat(activeDeck.format) === "commander") {
+      await reconcileCommanderState(activeDeck);
+    }
+    const target = activeDeck.cards.find((c) => c.id === cardId);
+
+    if (target && nextCount > 0 && normalizeDeckFormat(activeDeck.format) === "commander") {
+      const sf = await getScryfallCard(target);
+      if (!sf) {
+        throw new Error(`Could not verify card data for ${target.name}.`);
+      }
+      const currentTotal = deckCardTotal(activeDeck);
+      const delta = nextCount - Number(target.count || 0);
+      if (delta > 0 && currentTotal + delta > COMMANDER_DECK_SIZE) {
+        throw new Error(`Commander decks are limited to ${COMMANDER_DECK_SIZE} cards.`);
+      }
+      if (activeDeck.commanderCardId && cardId !== activeDeck.commanderCardId) {
+        const cardIdentity = sf.color_identity || [];
+        if (!isColorIdentitySubset(cardIdentity, activeDeck.commanderColorIdentity)) {
+          throw new Error(`${target.name} is outside your commander's color identity.`);
+        }
+      }
+    }
+
+    updateCardCount(activeDeck, cardId, nextCount);
     await saveState(state);
   }
   return state;

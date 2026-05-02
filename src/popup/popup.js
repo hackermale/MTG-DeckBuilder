@@ -32,10 +32,37 @@ async function sendMessage(payload) {
   return result;
 }
 
+const COMMANDER_DECK_CAP = 100;
+
 function computeStats(deck) {
   const totalCards = deck.cards.reduce((sum, card) => sum + Number(card.count || 0), 0);
   const uniqueCards = deck.cards.length;
   return { totalCards, uniqueCards };
+}
+
+function isBasicLandCard(card) {
+  const lowerTypeLine = (card.typeLine || "").toLowerCase();
+  if (lowerTypeLine.includes("basic") && lowerTypeLine.includes("land")) {
+    return true;
+  }
+  const normalizedName = String(card.name || "")
+    .trim()
+    .toLowerCase();
+  const basicLandNames = new Set([
+    "plains",
+    "island",
+    "swamp",
+    "mountain",
+    "forest",
+    "wastes",
+    "snow-covered plains",
+    "snow-covered island",
+    "snow-covered swamp",
+    "snow-covered mountain",
+    "snow-covered forest",
+    "snow-covered wastes"
+  ]);
+  return basicLandNames.has(normalizedName);
 }
 
 function renderDeckSelect() {
@@ -54,7 +81,16 @@ function renderDeckSelect() {
 function renderStats(deck) {
   const summary = computeStats(deck);
   const format = String(deck.format || "standard");
-  stats.textContent = `${summary.totalCards} total cards | ${summary.uniqueCards} unique cards | ${format}`;
+  if (format === "commander") {
+    const commanderCard =
+      deck.commanderCardId && deck.cards.find((c) => c.id === deck.commanderCardId);
+    const commanderLabel = commanderCard
+      ? `Commander: ${commanderCard.name}`
+      : "Commander: add a legendary creature or planeswalker first";
+    stats.textContent = `${summary.totalCards} / ${COMMANDER_DECK_CAP} cards | ${commanderLabel} | ${summary.uniqueCards} unique`;
+  } else {
+    stats.textContent = `${summary.totalCards} total cards | ${summary.uniqueCards} unique cards | ${format}`;
+  }
 }
 
 function makeCardItem(deck, card) {
@@ -77,7 +113,12 @@ function makeCardItem(deck, card) {
   countInput.className = "count-input";
   countInput.type = "number";
   countInput.min = "0";
-  countInput.max = "99";
+  const isCommander = String(deck.format || "") === "commander";
+  if (isCommander) {
+    countInput.max = isBasicLandCard(card) ? String(COMMANDER_DECK_CAP) : "1";
+  } else {
+    countInput.max = "4";
+  }
   countInput.value = String(card.count);
   countInput.addEventListener("change", async () => {
     try {
@@ -104,7 +145,10 @@ function renderCards(deck) {
   cardList.innerHTML = "";
   if (!deck.cards.length) {
     const empty = document.createElement("li");
-    empty.textContent = "No cards yet. Open a card page and click Add Current Card.";
+    empty.textContent =
+      String(deck.format || "") === "commander"
+        ? "No cards yet. Open a legendary creature or planeswalker page and use Add Current Card to choose your commander, then add cards that match your commander's color identity (max 100 cards, one copy per card except basic lands)."
+        : "No cards yet. Open a card page and click Add Current Card.";
     cardList.appendChild(empty);
     return;
   }
