@@ -3,6 +3,7 @@ function textOrEmpty(value) {
 }
 
 function guessCardFromPage() {
+  // Try site-specific attributes first, then generic class-based fallbacks.
   const title = textOrEmpty(document.querySelector("h1")?.textContent);
   const manaCost =
     textOrEmpty(document.querySelector("[data-card-mana-cost]")?.textContent) ||
@@ -17,6 +18,7 @@ function guessCardFromPage() {
   const name = title || document.title.replace(/\s*\|.*$/, "").trim();
   if (!name) return null;
 
+  // Keep payload minimal; background enriches and validates with Scryfall.
   return {
     id: `${name}|${set || "unknown"}`,
     name,
@@ -30,6 +32,7 @@ async function addCurrentCardToDeck() {
   const card = guessCardFromPage();
   if (!card) return { ok: false, error: "Card data not found on this page." };
 
+  // Delegate legality and deck rules to background script.
   return chrome.runtime.sendMessage({
     type: "deck/addCard",
     card
@@ -39,6 +42,7 @@ async function addCurrentCardToDeck() {
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message?.type !== "content/addCurrentCard") return;
 
+  // Return true to keep the channel open for async sendResponse.
   addCurrentCardToDeck()
     .then((result) => sendResponse(result))
     .catch((error) => sendResponse({ ok: false, error: String(error) }));

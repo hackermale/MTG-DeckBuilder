@@ -3,6 +3,7 @@ const ACTIVE_DECK_KEY = "activeDeckId";
 const ALLOWED_FORMATS = ["standard", "commander", "modern", "pioneer", "historic", "alchemy"];
 const SCRYFALL_API_BASE = "https://api.scryfall.com";
 const COMMANDER_DECK_SIZE = 100;
+// In-memory cache to avoid repeated Scryfall lookups for the same card.
 const scryfallCardCache = new Map();
 
 function normalizeDeckFormat(format) {
@@ -45,6 +46,7 @@ async function getState() {
   let shouldPersist = false;
 
   if (!decks.length) {
+    // Always keep at least one deck so popup/UI logic has a stable target.
     const starterDeck = createDeck();
     decks = [starterDeck];
     activeDeckId = starterDeck.id;
@@ -106,6 +108,7 @@ async function fetchScryfallCard(card) {
   const set = String(card.set || "").trim().toLowerCase();
   const exactPath = `${SCRYFALL_API_BASE}/cards/named?exact=${encodeURIComponent(name)}`;
   const withSetPath = set ? `${exactPath}&set=${encodeURIComponent(set)}` : exactPath;
+  // Prefer an exact name+set match, then fall back to name-only.
   const urls = set ? [withSetPath, exactPath] : [exactPath];
 
   for (const url of urls) {
@@ -182,6 +185,7 @@ async function reconcileCommanderState(deck) {
   if (normalizeDeckFormat(deck.format) !== "commander") return;
 
   if (deck.commanderCardId) {
+    // If commander was removed by count edits, clear commander constraints.
     const stillThere = deck.cards.some((c) => c.id === deck.commanderCardId);
     if (stillThere) {
       return;
@@ -195,6 +199,7 @@ async function reconcileCommanderState(deck) {
   for (const c of deck.cards) {
     const sf = await getScryfallCard(c);
     const line = sf?.type_line || c.typeLine;
+    // Auto-recover commander assignment from existing legal candidates.
     if (sf && isValidCommanderCandidate(line)) {
       deck.commanderCardId = c.id;
       deck.commanderColorIdentity = sf.color_identity || [];
@@ -205,6 +210,7 @@ async function reconcileCommanderState(deck) {
 }
 
 async function validateCommanderCardAdd(deck, normalizedCard, scryfallCard) {
+  // Ensure commander metadata reflects the current deck before enforcing rules.
   await reconcileCommanderState(deck);
 
   const typeLine = scryfallCard?.type_line || normalizedCard.typeLine;
@@ -269,6 +275,7 @@ function addCardToDeck(deck, card) {
   if (!existing) {
     deck.cards.push({ ...normalized, count: 1 });
   } else {
+    // Merge newly discovered metadata from richer sources (e.g., Scryfall).
     existing.count = Math.min(existing.count + 1, maxCount);
     if (!String(existing.typeLine || "").trim() && String(normalized.typeLine || "").trim()) {
       existing.typeLine = normalized.typeLine;
@@ -369,6 +376,7 @@ async function handleAddCard(card) {
     });
     addCardToDeck(activeDeck, cardForDeck);
 
+    // First valid card in a new commander deck becomes commander.
     if (normalizeDeckFormat(activeDeck.format) === "commander" && !activeDeck.commanderCardId) {
       const line = scryfallCard.type_line || normalizedCard.typeLine;
       if (isValidCommanderCandidate(line)) {
@@ -436,6 +444,7 @@ chrome.runtime.onInstalled.addListener(async () => {
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   const run = async () => {
+    // Message router used by popup/content scripts.
     switch (message?.type) {
       case "deck/getState":
         return handleGetState();
