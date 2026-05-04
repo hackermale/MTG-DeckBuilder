@@ -15,6 +15,7 @@ const ALLOWED_FORMATS = ["standard", "commander", "modern", "pioneer", "historic
 
 let state = { decks: [], activeDeckId: "" };
 
+// Centralized status feedback so every async handler reports consistently.
 function setStatus(message, isError = false) {
   statusEl.textContent = message;
   statusEl.style.color = isError ? "#f87171" : "#a3e635";
@@ -25,6 +26,7 @@ function activeDeck() {
 }
 
 async function sendMessage(payload) {
+  // All popup->background calls use the same ok/error envelope.
   const result = await chrome.runtime.sendMessage(payload);
   if (!result?.ok) {
     throw new Error(result?.error || "Unknown extension error");
@@ -45,6 +47,7 @@ function isBasicLandCard(card) {
   if (lowerTypeLine.includes("basic") && lowerTypeLine.includes("land")) {
     return true;
   }
+  // Fallback for cards/pages where type metadata is incomplete.
   const normalizedName = String(card.name || "")
     .trim()
     .toLowerCase();
@@ -115,6 +118,7 @@ function makeCardItem(deck, card) {
   countInput.min = "0";
   const isCommander = String(deck.format || "") === "commander";
   if (isCommander) {
+    // Commander allows only one copy of non-basic cards.
     countInput.max = isBasicLandCard(card) ? String(COMMANDER_DECK_CAP) : "1";
   } else {
     countInput.max = "4";
@@ -178,6 +182,7 @@ async function addCurrentTabCard() {
   if (!result?.ok) {
     throw new Error(result?.error || "Could not add card from this page.");
   }
+  // Content script returns the full latest deck state after mutation.
   state = { decks: result.decks, activeDeckId: result.activeDeckId };
   render();
 }
@@ -208,6 +213,7 @@ function closeCreateDeckDialog() {
 }
 
 function initializeCreateDeckDialog() {
+  // Keep the UI choices aligned with formats supported by background validation.
   deckFormatSelect.innerHTML = "";
   for (const format of ALLOWED_FORMATS) {
     const option = document.createElement("option");
@@ -257,6 +263,7 @@ async function handleExport() {
 
 async function initialize() {
   try {
+    // Popup is ephemeral, so always hydrate state from background on open.
     const initial = await sendMessage({ type: "deck/getState" });
     state = { decks: initial.decks, activeDeckId: initial.activeDeckId };
     render();
