@@ -74,11 +74,13 @@ async function saveState({ decks, activeDeckId }) {
 }
 
 function normalizeCard(card) {
+  const typeLine = card.typeLine ?? card.type_line;
+  const manaCost = card.manaCost ?? card.mana_cost;
   return {
     id: String(card.id || `${card.name}|${card.set || "unknown"}`),
     name: String(card.name || "Unknown Card"),
-    manaCost: String(card.manaCost || ""),
-    typeLine: String(card.typeLine || ""),
+    manaCost: String(manaCost || ""),
+    typeLine: String(typeLine || ""),
     set: String(card.set || ""),
     count: Number(card.count || 1)
   };
@@ -268,6 +270,12 @@ function addCardToDeck(deck, card) {
     deck.cards.push({ ...normalized, count: 1 });
   } else {
     existing.count = Math.min(existing.count + 1, maxCount);
+    if (!String(existing.typeLine || "").trim() && String(normalized.typeLine || "").trim()) {
+      existing.typeLine = normalized.typeLine;
+    }
+    if (!String(existing.manaCost || "").trim() && String(normalized.manaCost || "").trim()) {
+      existing.manaCost = normalized.manaCost;
+    }
   }
   deck.updatedAt = Date.now();
 }
@@ -353,7 +361,13 @@ async function handleAddCard(card) {
       await validateCommanderCardAdd(activeDeck, normalizedCard, scryfallCard);
     }
 
-    addCardToDeck(activeDeck, normalizedCard);
+    const cardForDeck = normalizeCard({
+      ...normalizedCard,
+      typeLine: scryfallCard.type_line || normalizedCard.typeLine,
+      manaCost: scryfallCard.mana_cost || normalizedCard.manaCost,
+      set: normalizedCard.set || scryfallCard.set || ""
+    });
+    addCardToDeck(activeDeck, cardForDeck);
 
     if (normalizeDeckFormat(activeDeck.format) === "commander" && !activeDeck.commanderCardId) {
       const line = scryfallCard.type_line || normalizedCard.typeLine;
